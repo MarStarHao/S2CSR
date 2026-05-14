@@ -7,7 +7,7 @@ import numpy as np
 from S2CSD.augmentations import DataTransform_T, DataTransform_F
 from torch.fft import fft
 
-# 将当前文件所在目录添加到系统路径中，方便导入同目录下的模块
+
 sys.path.append(os.path.dirname(__file__))
 import utils
 import math
@@ -19,16 +19,7 @@ from networks.CausalCnn import CausalCNNEncoder
 from networks.ConvEncoder_f import ConvBlockEncoder_f
 from networks.LSTMEncoder_t import LSTMEncoder
 
-"""
-主要完成 DDEM 的基本架构
-这个模块的代码和 time2station 的代码一样，除了 DDEM 类命名和 loss 设置、network 不同以外，代码结构上是一样的
 
-同时，这部分要整合 network.DDEM 和 loss 模块
-
-论文中编码器是论文的核心部分，通过设计的loss训练encoder实现特征提取
-
-这个模块将时域和频域的编码器进行整合，实现了时域和频域的特征提取
-"""
 def hanning_numpy(X):
     length = X.shape[2] # 列
     weight = (1-np.cos(2*math.pi* np.arange(length)/length))/2
@@ -66,8 +57,7 @@ class BasicEncoderClass():
         """
         pass
 
-# 论文中提到的 Decomposed Dual-view Embedding Module (ddEM)，处理趋势和周期视图
-# 在时域上面使用的编码器
+
 class CausalConv(BasicEncoderClass):  #
     def __init__(self, win_size, batch_size, nb_steps, lr,
                  channels, depth, reduced_size, out_channels, kernel_size,
@@ -87,9 +77,6 @@ class CausalConv(BasicEncoderClass):  #
         # # self.num_classes = None  # 类别数量
         # self.dropout = 0.30  # 丢弃率
         # self.batchsize = 1  #
-
-
-
 
         # 创建一个网络模型
         self.network = self.__create_network(in_channels, channels, depth,
@@ -285,35 +272,33 @@ class CausalConv(BasicEncoderClass):  #
         """
         # Check if the given time series have unequal lengths
 
-        # 判断数据中是否有nan 非数值""
-        varying = bool(numpy.isnan(numpy.sum(X)))  # 主要判断x中是否存在非数值, np.isnan是全false, bool 也是false,说明数据中没有非数值值
+      
+        varying = bool(numpy.isnan(numpy.sum(X))) 
 
-        test = utils.Dataset(X)  # 加载的数据集
+        test = utils.Dataset(X)  
         test_generator = torch.utils.data.DataLoader(
             test, batch_size=batch_size if not varying else 1
         )
-        # 构造矩阵  batch X out_channels
-        # 获取输入数据X的样本数量（第一个维度）
+      
         features = numpy.zeros((numpy.shape(X)[0], self.out_channels))
         self.network = self.network.eval()  # 模型测试
 
         count = 0
-        # no_grad()方法是用于在评估模型性能时禁用autograd引擎的梯度计算的函数
+      
         with torch.no_grad():  # 禁用autograd引擎的梯度计算的函数
             for batch in test_generator:  # 批量处理数据
                 if self.cuda:
                     batch = batch.cuda(self.gpu)
                 # if self.win_type=='hanning':
                 #     batch = hanning_tensor(batch)
-                # 将结果输出到CPU上面。保存在features中
+               
                 features[count * batch_size: (count + 1) * batch_size] = self.network(batch).cpu()  # 输出到CPU上面。
                 count += 1
         # 训练网络
         self.network = self.network.train()  # 切换模型到训练模式
         return features  # 返回嵌入
 
-    # 网络窗口编码器
-    # 对于给定大小的输入的每个子序列(滑动窗口表示)，输出编码器与输入相关联的表示。
+    
     def encode_window(self, X, win_size=128, batch_size=500, window_batch_size=10000, step=10):
         """
         Outputs the representations associated to the input by the encoder,
@@ -346,7 +331,7 @@ class CausalConv(BasicEncoderClass):  #
                                                                                           num_window),
                                                                                step)])  # masking.shape = (window_batch_size, num_channel, win_size)
                 # print(masking[1][0][1])
-                # 但是这有什么区别？
+                
                 if self.win_type == 'hanning':
                     masking = hanning_numpy(masking)  # return weight*X
                 print("test", masking.shape, step * i * window_batch_size,
@@ -368,359 +353,4 @@ class CausalConv(BasicEncoderClass):  #
         )
         return self
 
-
-#===============================================================================
-"""
-上面的部分和 Time2station 部分相同
-"""
-# 增加一个在频域上面使用的编码器
-#
-# class CausalConv_f():
-#     def __init__(self, win_size, batch_size, nb_steps, lr,
-#                  channels, strike, reduced_size, out_channels, kernel_size,
-#                  in_channels, cuda, gpu, M, N, win_type,temprature):
-#         # 创建一个频域上的网络结构
-#         # 这个网络结构是三个卷积块 在ConvEncoder_f.py中
-#
-#         self.network = self.__create_network(in_channels, channels, strike, reduced_size,
-#                                              out_channels, kernel_size, cuda, gpu)
-#
-#         self.win_type = win_type
-#         self.architecture = ''
-#         self.cuda = cuda
-#         self.gpu = gpu
-#         self.batch_size = batch_size
-#         self.nb_steps = nb_steps
-#         self.lr = lr
-#         self.in_channels = in_channels
-#         self.out_channels = out_channels
-#         self.strike  = strike
-#
-#         # ==================================================================
-#         # 这个部分使用了频域上的loss
-#         self.loss = losses.TFC_loss.TFCLoss(
-#             win_size, M, N, win_type
-#         )  # 损失函数
-#
-#         # 网络参数更新，保存需要更新的参数
-#         params_to_update = [p for p in self.network.parameters() if p.requires_grad]
-#         # ============================================================================
-#         self.optimizer = torch.optim.Adam(params_to_update, lr=lr)
-#
-#         self.loss_list = []
-#
-#     def __create_network(self, in_channels, channels, strike, padding,
-#                          out_channels, kernel_size, cuda, gpu):
-#        # 这里需要卷积训练。 三个卷积块
-#         network = networks.ConvEncoder_f.ConvBlockEncoder_f(
-#             in_channels, channels, strike, padding, out_channels,
-#             kernel_size
-#         )
-#         # ======================================================================
-#         # 将网络参数存储为 double 型
-#         network.double()
-#         if cuda:
-#             network.cuda(gpu)
-#
-#         return network  # 返回嵌入网络
-#
-#         # ============================================================
-#         # 和之前代码相同
-#
-#     def fit(self, X, save_memory=False, verbose=False):
-#         """
-#         训练网络模型。
-#
-#         :param X: 输入的训练数据
-#         :param save_memory: 是否节省内存，默认为 False
-#         :param verbose: 是否打印详细信息，默认为 False
-#         :return: 训练好的网络模型
-#         """
-#         # 将输入数据转换为 torch.Tensor
-#         train = torch.from_numpy(X)
-#         if self.cuda:
-#             train = train.cuda(self.gpu)
-#
-#         # 调用 utils 中的 Dataset 类创建数据集
-#         train_torch_dataset = utils.Dataset(X)
-#         # 数据加载器，用于批量处理数据
-#         train_generator = torch.utils.data.DataLoader(
-#             train_torch_dataset, batch_size=self.batch_size, shuffle=True
-#         )
-#         i = 0
-#
-#         while i < self.nb_steps:
-#             # 遍历批量数据
-#             for batch in train_generator:
-#                 if self.cuda:
-#                     batch = batch.cuda(self.gpu)
-#                 # 清空优化器的梯度
-#                 self.optimizer.zero_grad()
-#                 # 计算损失函数
-#                 # 这里采用一个频域上的损失函数
-#                 loss = self.loss_f(batch, self.network, save_memory=False)
-#                 # 反向传播计算梯度
-#                 loss.backward()
-#                 # 更新网络参数
-#                 self.optimizer.step()
-#
-#                 i += 1
-#                 if i >= self.nb_steps:
-#                     break
-#
-#         return self.network  # 返回训练好的网络模型
-#
-#     def encode(self, X, batch_size=500):
-#         """
-#         对输入数据进行编码。
-#
-#         :param X: 输入数据
-#         :param batch_size: 批量大小，默认为 500
-#         :return: 编码后的特征
-#         """
-#
-#         # 检查输入数据是否包含 NaN 值
-#         varying = bool(numpy.isnan(numpy.sum(X)))
-#
-#         # 创建测试数据集
-#         test = utils.Dataset(X)
-#         # 创建测试数据加载器
-#         test_generator = torch.utils.data.DataLoader(
-#             test, batch_size=batch_size if not varying else 1
-#         )
-#
-#         # 初始化编码后的特征数组
-#         features = numpy.zeros((numpy.shape(X)[0], self.out_channels))
-#         # 将网络设置为评估模式
-#         self.network = self.network.eval()
-#
-#         count = 0
-#         with torch.no_grad():
-#             for batch in test_generator:
-#                 if self.cuda:
-#                     batch = batch.cuda(self.gpu)
-#                 # 获取编码后的特征并存储到 features 数组中
-#                 features[count * batch_size: (count + 1) * batch_size] = self.network(batch)[0].cpu()
-#                 count += 1
-#
-#         return features
-#
-#     def encode_window(self, X, win_size=128, batch_size=500, window_batch_size=10000, step=10):
-#         """
-#         对输入数据按窗口进行编码。
-#
-#         :param X: 输入数据
-#         :param win_size: 窗口大小，默认为 128
-#         :param batch_size: 批量大小，默认为 500
-#         :param window_batch_size: 窗口批量大小，默认为 10000
-#         :param step: 窗口滑动步长，默认为 10
-#         :return: 窗口编码后的嵌入向量
-#         """
-#         num_batch, num_channel, length = numpy.shape(X)
-#         # 计算窗口数量
-#         num_window = int((length - win_size) / step) + 1
-#         # 初始化嵌入向量数组
-#         embeddings = numpy.empty((num_batch, self.out_channels, num_window))
-#
-#         for b in range(num_batch):
-#             # 计算批量的次数
-#             for i in range(math.ceil(num_window / window_batch_size)):
-#                 # 生成窗口数据
-#                 masking = numpy.array([X[b, :, j:j + win_size] for j in range(step * i * window_batch_size,
-#                                                                               step * min((i + 1) * window_batch_size,
-#                                                                                          num_window), step)])
-#                 # 对窗口数据进行编码，并交换轴
-#                 embeddings[b, :, i * window_batch_size: (i + 1) * window_batch_size] = numpy.swapaxes(
-#                     self.encode(masking[:], batch_size=batch_size), 0, 1)
-#
-#         return embeddings[0].T
-#
-#         # 参数设定
-#
-#     def set_params(self, compared_length, batch_size, nb_steps, lr,
-#                    channels, depth, reduced_size, out_channels, kernel_size,
-#                    in_channels, cuda, gpu):
-#
-#         self.__init__(
-#             compared_length, batch_size,
-#             nb_steps, lr, channels, depth,
-#             reduced_size, out_channels, kernel_size, in_channels, cuda, gpu
-#         )
-#         return self
-#
-# # 增加一个时域编码器 LSTM
-# class LSTMEncoder_t():
-#     def __init__(self, win_size, batch_size, nb_steps, lr,
-#                  channels, strike, reduced_size, out_channels, kernel_size,
-#                  in_channels, cuda, gpu, M, N, win_type,temprature):
-#         # 创建一个频域上的网络结构
-#         # 这个网络结构是三个卷积块 在ConvEncoder_f.py中
-#
-#         self.network = self.__create_network(in_channels, channels, strike, reduced_size,
-#                                              out_channels, kernel_size, cuda, gpu)
-#
-#         self.win_type = win_type
-#         self.architecture = ''
-#         self.cuda = cuda
-#         self.gpu = gpu
-#         self.batch_size = batch_size
-#         self.nb_steps = nb_steps
-#         self.lr = lr
-#         self.in_channels = in_channels
-#         self.out_channels = out_channels
-#         self.strike  = strike
-#
-#         # ==================================================================
-#         # 这个部分使用了频域上的loss
-#         self.loss_f =losses.TFC_loss.FrequencyDomainLoss_f(
-#            batch_size,temprature
-#         )
-#
-#         # 网络参数更新，保存需要更新的参数
-#         params_to_update = [p for p in self.network.parameters() if p.requires_grad]
-#         # ============================================================================
-#         self.optimizer = torch.optim.Adam(params_to_update, lr=lr)
-#
-#         self.loss_list = []
-#
-#
-#
-#     def __create_network(self, in_channels, channels, strike, padding,
-#                          out_channels, kernel_size, cuda, gpu):
-#        # 这里需要卷积训练。 三个卷积块
-#         network = networks.ConvEncoder_f.ConvBlockEncoder_f(
-#             in_channels, channels, strike, padding, out_channels,
-#             kernel_size
-#         )
-#         # ======================================================================
-#         # 将网络参数存储为 double 型
-#         network.double()
-#         if cuda:
-#             network.cuda(gpu)
-#
-#         return network  # 返回嵌入网络
-#
-#         # ============================================================
-#         # 和之前代码相同
-#
-#     def fit(self, X, save_memory=False, verbose=False):
-#         """
-#         训练网络模型。
-#
-#         :param X: 输入的训练数据
-#         :param save_memory: 是否节省内存，默认为 False
-#         :param verbose: 是否打印详细信息，默认为 False
-#         :return: 训练好的网络模型
-#         """
-#         # 将输入数据转换为 torch.Tensor
-#         train = torch.from_numpy(X)
-#         if self.cuda:
-#             train = train.cuda(self.gpu)
-#
-#         # 调用 utils 中的 Dataset 类创建数据集
-#         train_torch_dataset = utils.Dataset(X)
-#         # 数据加载器，用于批量处理数据
-#         train_generator = torch.utils.data.DataLoader(
-#             train_torch_dataset, batch_size=self.batch_size, shuffle=True
-#         )
-#         i = 0
-#
-#         while i < self.nb_steps:
-#             # 遍历批量数据
-#             for batch in train_generator:
-#                 if self.cuda:
-#                     batch = batch.cuda(self.gpu)
-#                 # 清空优化器的梯度
-#                 self.optimizer.zero_grad()
-#                 # 计算损失函数
-#                 # 这里采用一个频域上的损失函数
-#                 loss = self.loss_f(batch, self.network, save_memory=False)
-#                 # 反向传播计算梯度
-#                 loss.backward()
-#                 # 更新网络参数
-#                 self.optimizer.step()
-#
-#                 i += 1
-#                 if i >= self.nb_steps:
-#                     break
-#
-#         return self.network  # 返回训练好的网络模型
-#
-#     def encode(self, X, batch_size=500):
-#         """
-#         对输入数据进行编码。
-#
-#         :param X: 输入数据
-#         :param batch_size: 批量大小，默认为 500
-#         :return: 编码后的特征
-#         """
-#
-#         # 检查输入数据是否包含 NaN 值
-#         varying = bool(numpy.isnan(numpy.sum(X)))
-#
-#         # 创建测试数据集
-#         test = utils.Dataset(X)
-#         # 创建测试数据加载器
-#         test_generator = torch.utils.data.DataLoader(
-#             test, batch_size=batch_size if not varying else 1
-#         )
-#
-#         # 初始化编码后的特征数组
-#         features = numpy.zeros((numpy.shape(X)[0], self.out_channels))
-#         # 将网络设置为评估模式
-#         self.network = self.network.eval()
-#
-#         count = 0
-#         with torch.no_grad():
-#             for batch in test_generator:
-#                 if self.cuda:
-#                     batch = batch.cuda(self.gpu)
-#                 # 获取编码后的特征并存储到 features 数组中
-#                 features[count * batch_size: (count + 1) * batch_size] = self.network(batch)[0].cpu()
-#                 count += 1
-#
-#         return features
-#
-#     def encode_window(self, X, win_size=128, batch_size=500, window_batch_size=10000, step=10):
-#         """
-#         对输入数据按窗口进行编码。
-#
-#         :param X: 输入数据
-#         :param win_size: 窗口大小，默认为 128
-#         :param batch_size: 批量大小，默认为 500
-#         :param window_batch_size: 窗口批量大小，默认为 10000
-#         :param step: 窗口滑动步长，默认为 10
-#         :return: 窗口编码后的嵌入向量
-#         """
-#         num_batch, num_channel, length = numpy.shape(X)
-#         # 计算窗口数量
-#         num_window = int((length - win_size) / step) + 1
-#         # 初始化嵌入向量数组
-#         embeddings = numpy.empty((num_batch, self.out_channels, num_window))
-#
-#         for b in range(num_batch):
-#             # 计算批量的次数
-#             for i in range(math.ceil(num_window / window_batch_size)):
-#                 # 生成窗口数据
-#                 masking = numpy.array([X[b, :, j:j + win_size] for j in range(step * i * window_batch_size,
-#                                                                               step * min((i + 1) * window_batch_size,
-#                                                                                          num_window), step)])
-#                 # 对窗口数据进行编码，并交换轴
-#                 embeddings[b, :, i * window_batch_size: (i + 1) * window_batch_size] = numpy.swapaxes(
-#                     self.encode(masking[:], batch_size=batch_size), 0, 1)
-#
-#         return embeddings[0].T
-#
-#         # 参数设定
-#
-#     def set_params(self, compared_length, batch_size, nb_steps, lr,
-#                    channels, depth, reduced_size, out_channels, kernel_size,
-#                    in_channels, cuda, gpu):
-#
-#         self.__init__(
-#             compared_length, batch_size,
-#             nb_steps, lr, channels, depth,
-#             reduced_size, out_channels, kernel_size, in_channels, cuda, gpu
-#         )
-#         return self
 
