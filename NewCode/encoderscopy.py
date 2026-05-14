@@ -11,7 +11,7 @@ import numpy as np
 from S2CSD.augmentations import DataTransform_T, DataTransform_F
 
 
-# 将当前文件所在目录添加到系统路径中，方便导入同目录下的模块
+
 #sys.path.append(os.path.dirname(__file__))
 import utils
 import math
@@ -26,15 +26,6 @@ from .networks.ConvEncoder_f import ConvBlockEncoder_f
 from .networks.LSTMEncoder_t import LSTMEncoder
 
 
-"""
-这个代码主要是为了处理除过UCR-SEG数据集以外的数据集
-
-这个模块的代码和 time2station 的代码一样，除了 DDEM 类命名和 loss 设置、network 不同以外，代码结构上是一样的
-
-
-论文中编码器是论文的核心部分，通过设计的loss训练encoder实现特征提取
-
-!! 这部分只是使用了 时间域 和 频域 两种特征，没有将产生这两种特征的网络结构用来训练
 """
 def hanning_numpy(X):
     length = X.shape[2] # 列
@@ -63,7 +54,7 @@ class CausalConv(BasicEncoderClass):  #
                  channels, depth, reduced_size, out_channels, kernel_size,
                  in_channels, cuda, gpu, M, N, win_type):
 
-        # 创建一个网络模型
+       
         self.network = self.__create_network(in_channels, channels, depth,
                                              reduced_size, out_channels, kernel_size, cuda, gpu)
 
@@ -79,87 +70,79 @@ class CausalConv(BasicEncoderClass):  #
         # ----------------------------------------------------------
         # ---------------------------------------------------------
 
-        self.jitter_scale_ratio = 1.1  # 抖动缩放比例
-        self.jitter_ratio = 0.8  # 抖动比例
-        self.max_seg = 2  # 最大分段数
+        self.jitter_scale_ratio = 1.1  
+        self.jitter_ratio = 0.8  
+        self.max_seg = 2  # 
 
-        # 频域增强参数
-        self.remove_frequency_ratio = 0.1  # 在频域上移除频率的比例
-        self.add_frequency_ratio = 0.1  # 在频域上添加频率的比例
+
+        self.remove_frequency_ratio = 0.1  
+        self.add_frequency_ratio = 0.1  
 
         # 时域LSTM参数
-        # self.feature_dim = 256  # 特征维度 就是输入序列通道数
-        self.hidden_size = 1024  # 隐藏层大小
-        self.output_size = 512  # 输出层大小 !!
+        # self.feature_dim = 256 
+        self.hidden_size = 1024 
+        self.output_size = 512  
 
-        self.dropout_rate = 0.10  # 丢弃率
-        self.num_layers = 2  # 双向 LSTM 的层数
+        self.dropout_rate = 0.10  
+        self.num_layers = 2  
 
-        # 频域参数
-        # ------频域编码器参数------
-        #self.input_channels = 4  # 单变量时间序列 (UTS) 卷积网络的输入通道数  ！！！！！根据不同数据集要改变通道信息
-        self.kernel_size = 4  # 卷积核大小
-        self.stride = 1  # 卷积步长
-        self.output_channels = 4  # 卷积网络的输出通道数  ！！！ 根据不同数据集要改变通道信息
-        # self.num_classes = None  # 类别数量
-        self.dropout = 0.30  # 丢弃率
-        self.batchsize = 1  # ！！
+      
+        #self.input_channels = 4  
+        self.kernel_size = 4  
+        self.stride = 1  # 
+        self.output_channels = 4  # 
+        # self.num_classes = None  # 
+        self.dropout = 0.30  #
+        self.batchsize = 1  #
 
-        #------------------------------------------------------
-        # 损失函数  这是LSE_loss.py中 实现的LSE-loss函数
-        # 改成了 TFC_loss.py中的时域和频域损失
+       
         self.loss = losses.TFC_loss.TFCLoss(
             win_size, M, N, win_type
-        )  # 损失函数
+        )  # 
 
-        # 结合了实例对比损失 和 时间对比损失
+      
         self.loss_t =losses.TFC_loss.TimeDomainLoss_t(device="cuda")
-        # 采用了频域上的instance 对比损失
+      
         self.loss_f =losses.TFC_loss.FrequencyDomainLoss_ftest(device="cuda")
 
 
-        # ----------------------------------------------------------------
-        # 这个地方只是 创建一个优化器，用于优化网络模型的参数 仅仅优化了主网络的结构
-        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)  # Adam优化器
+      
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=lr)  
         # ---------------------------------------------------------------
-        self.loss_list = []  # 损失函数列表
+        self.loss_list = [] 
 
-    # 创建网络模型, 创建因果卷积网络
+ 
     def __create_network(self, in_channels, channels, depth, reduced_size,
                          out_channels, kernel_size, cuda, gpu):
         # -------------------------------------------------
 
-        # 使用因果卷积编码器创建了一个网络模型，采用了因果卷积编码器
+      
         network = networks.CausalCnn.CausalCNNEncoder(
             in_channels, channels, depth, reduced_size, out_channels,
             kernel_size
         )
-        network.double()  # 将数据类型设置为双精度浮点数
+        network.double() 
         if cuda:
             network.cuda(gpu)
 
-        return network # 返回 一个因果卷积编码器
+        return network
 
-    # 返回一个训练network网络
-    # 模型训练方法  使用给定的训练数据无监督地训练编码器。
+  
     def fit(self, X, save_memory=False, verbose=False):
 
-        self.input_channels = X.shape[1] # 时间序列的通道数
-        train = torch.from_numpy(X)  # 从numpy数组创建一个PyTorch张量
+        self.input_channels = X.shape[1]
+        train = torch.from_numpy(X) 
         if self.cuda:
-            train = train.cuda(self.gpu)  # 使用GPU
+            train = train.cuda(self.gpu)  
 
         # -------------------------------------------------------
 
-        # 训练数据集
-        # 创建一个PyTorch数据集对象，用于加载训练数据集
-        train_torch_dataset = utils.Dataset(X)  # PyTorch wrapper for a numpy dataset. 是一个numpy dataset对象
-        # 用于创建数据加载器（data loader）的函数。数据加载器用于加载训练和测试数据集，并将数据划分为小批量进行处理
-        # 可以方便地进行数据批量处理、乱序加载和并行读取
-        #
+      
+        train_torch_dataset = utils.Dataset(X) 
+      
         train_generator = torch.utils.data.DataLoader(
             train_torch_dataset, batch_size=self.batch_size, shuffle=True
-        )  # 加载训练数据集
+        ) 
 
         i = 0  # Number of performed optimization steps
         epochs = 0  # Number of performed epochs
@@ -169,18 +152,18 @@ class CausalConv(BasicEncoderClass):  #
             if verbose:
                 print('Epoch: ', epochs + 1)
             # ---------------------------------------
-            for batch in train_generator:  # train_generator中的批量数据
+            for batch in train_generator:  
                 if self.cuda:
-                    batch = batch.cuda(self.gpu)  # 使用GPU
+                    batch = batch.cuda(self.gpu) 
                 # --------------------------------
-                # 下面部分是训练模型
+               
                 self.optimizer.zero_grad()
-                # 损失函数 预测和真实标签之间的损失
+             
                 # losses.LSE_loss.LSELoss()
                 # print("batch:",batch.shape)
                 # print("XX:",X.shape)
 
-                # self.network是为了实现嵌入
+             
                 loss = self.loss(batch, self.network, save_memory=save_memory)
 
                 self.lstmEncoder_t = networks.LSTMEncoder_t.LSTMEncoder(batch.shape[2], self.hidden_size,
@@ -201,15 +184,15 @@ class CausalConv(BasicEncoderClass):  #
                 #-----------
                 self.X_data_f, self.X_aug_f = DataTransform_F(self.x_data_f, self.remove_frequency_ratio, self.add_frequency_ratio)
 
-                # 输入原始数据和增强后的数据，然后对输出的表征实现转换
+             
                 z_i_t = self.lstmEncoder_t.forward(X)  # torch.Size([4, 512])
                 # ========================================
-                # 处理ucr-seg数据
+             
                 # z_i_t =z_i_t.unsqueeze(0).unsqueeze(0)
                 # z_i_t = z_i_t.expand(1,3,z_i_t.shape[2])
                 #===========================================
                 #print("zzzz,z_i_t",z_i_t.shape)
-                # 处理其他数据，除过ucr-seg数据
+            
 
                 z_i_t = z_i_t.unsqueeze(0).expand(3,z_i_t.shape[0],z_i_t.shape[1])
 
@@ -217,13 +200,13 @@ class CausalConv(BasicEncoderClass):  #
                 z_i_t_aug = self.lstmEncoder_t.forward(self.X_aug_t)  # torch.Size([3, 4, 512])
                 #=================================
 
-                # 处理UCR-seg data 的数据
+              
                 z_i_t_aug = z_i_t_aug.unsqueeze(0)
                 #==========================================
                 #z_i_t_aug = z_i_t_aug.permute(0, 2, 1)
                 #z_i_t_aug = z_i_t_aug.unsqueeze(0)  #exp_on_UCR_SEG
                 #------------------------------------------------------
-                # 得到频域的嵌入张量
+           
                 z_i_f, z_i_f_aug = self.convBlockEncoder_f.forward(self.X_data_f.to(torch.float32),
                                                                    self.X_aug_f.to(torch.float32))
                 z_i_f = z_i_f.permute(0, 2, 1)
@@ -231,8 +214,8 @@ class CausalConv(BasicEncoderClass):  #
                 # z_i_f_aug = self.convBlockEncoder_f.forward(self.X_aug_f)
                 #print("zif", z_i_f.shape, z_i_f_aug.shape)
                 #print("zit", z_i_t.shape, z_i_t_aug.shape)
-                # 计算时间域损失和频域损失
-                loss_t = self.loss_t(z_i_t, z_i_t_aug)  # 输入嵌入张量
+               
+                loss_t = self.loss_t(z_i_t, z_i_t_aug)  
 
                 loss_f = self.loss_f(z_i_f, z_i_f_aug)
                 # print("loss_t_f", loss_t,loss_f)
@@ -245,17 +228,17 @@ class CausalConv(BasicEncoderClass):  #
 
                # print("total_loss", total_loss,loss, loss_f, loss_t)
 
-                total_loss.backward()  # 反向传播计算梯度
-                self.optimizer.step()  # 优化模型
+                total_loss.backward()  
+                self.optimizer.step()  
                 # --------------------------------------------------------------
                 i += 1
-                if i >= self.nb_steps:  # 达到训练次数
+                if i >= self.nb_steps:  
                     break
             # self.scheduler.step()
             epochs += 1
-        return self.network  # 训练后的模型
+        return self.network  
 
-    # 输出 整个时间序列的嵌入向量
+ 
     def encode(self, X, batch_size=500):
         """
         Outputs the representations associated to the input by the encoder.
@@ -267,36 +250,34 @@ class CausalConv(BasicEncoderClass):  #
         """
         # Check if the given time series have unequal lengths
 
-        # 判断数据中是否有nan 非数值""
-        varying = bool(numpy.isnan(numpy.sum(X)))  # 主要判断x中是否存在非数值, np.isnan是全false, bool 也是false,说明数据中没有非数值值
+       
+        varying = bool(numpy.isnan(numpy.sum(X))) 
 
-        test = utils.Dataset(X)  # 加载的数据集
+        test = utils.Dataset(X)  
         test_generator = torch.utils.data.DataLoader(
             test, batch_size=batch_size if not varying else 1
         )
-        # 构造矩阵  batch X out_channels
-        # 获取输入数据X的样本数量（第一个维度）
+        
         features = numpy.zeros((numpy.shape(X)[0], self.out_channels))
 
-        self.network = self.network.eval()  # 模型测试
+        self.network = self.network.eval()  
 
         count = 0
-        # no_grad()方法是用于在评估模型性能时禁用autograd引擎的梯度计算的函数
-        with torch.no_grad():  # 禁用autograd引擎的梯度计算的函数
-            for batch in test_generator:  # 批量处理数据
+      
+        with torch.no_grad(): 
+            for batch in test_generator:  
                 if self.cuda:
                     batch = batch.cuda(self.gpu)
                 # if self.win_type=='hanning':
                 #     batch = hanning_tensor(batch)
-                # 将结果输出到CPU上面。保存在features中  利用已经训练好的因果卷积编码器获得嵌入向量
-                features[count * batch_size: (count + 1) * batch_size] = self.network(batch).cpu()  # 输出到CPU上面。
+            
+                features[count * batch_size: (count + 1) * batch_size] = self.network(batch).cpu()  
                 count += 1
-        # 训练网络
-        self.network = self.network.train()  # 切换模型到训练模式
-        return features  # 返回嵌入
+       
+        self.network = self.network.train() 
+        return features  
 
-    # 对每个华东窗口的数据实现编码
-    # 对于给定大小的输入的每个子序列(滑动窗口表示)，输出编码器与输入相关联的表示。
+ 
     def encode_window(self, X, win_size=128, batch_size=500, window_batch_size=10000, step=10):
         """
         Outputs the representations associated to the input by the encoder,
@@ -309,16 +290,16 @@ class CausalConv(BasicEncoderClass):  #
         @param batch_size Size of batches used for splitting the test data to
                avoid out of memory errors when using CUDA.
         @param window_batch_size Size of batches of windows to compute in a
-               run of encode, to save RAM. 每个batch中窗口的数量
+               run of encode, to save RAM. 
         @param step Step length of the sliding window.
         """
         # _, dim = X.shape
         # X = numpy.transpose(numpy.array(X, dtype=float)).reshape(1, dim, -1)
 
-        num_batch, num_channel, length = numpy.shape(X)  # 获取输入数据X的形状，包括样本数量、通道数和时间序列长度
-        num_window = int((length - win_size) / step) + 1  # 计算滑动窗口的数量     窗口数量 = (序列长度 - 窗口大小) / 步长 + 1
+        num_batch, num_channel, length = numpy.shape(X)  
+        num_window = int((length - win_size) / step) + 1  
         embeddings = numpy.empty(
-            (num_batch, self.out_channels, num_window))  # 创建一个空的数组，用于存储每个样本的嵌入表示。数组的形状为(样本数量, 输出通道数, 滑动窗口的数量)
+            (num_batch, self.out_channels, num_window))  
 
         for b in range(num_batch):
             for i in range(math.ceil(num_window / window_batch_size)):  # 注意 num_window> window_batch_size
@@ -692,8 +673,7 @@ class CausalConv_LSE(BasicEncoderClass): # 因果卷积 中使用了LSE损失
         )
         return self
 #---------------------------------------------------------------
-# 增加LSTM的网络编码器
-# 构建一个LSTM的编码器
+
 class LSTM_LSE(BasicEncoderClass):  # LSTM编码器
     def __init__(self, compared_length, nb_random_samples, negative_penalty,
                  batch_size, nb_steps, lr, penalty, early_stopping,
@@ -917,25 +897,12 @@ class LSTM_LSE(BasicEncoderClass):  # LSTM编码器
         )
         return self  # 返回对象
 
-
-
-
-
-
-
-
-
-
-
-
-# 增加一个在频域上面使用的编码器
 #
 # class CausalConv_f():
 #     def __init__(self, win_size, batch_size, nb_steps, lr,
 #                  channels, strike, reduced_size, out_channels, kernel_size,
 #                  in_channels, cuda, gpu, M, N, win_type,temprature):
-#         # 创建一个频域上的网络结构
-#         # 这个网络结构是三个卷积块 在ConvEncoder_f.py中
+#        
 #
 #         self.network = self.__create_network(in_channels, channels, strike, reduced_size,
 #                                              out_channels, kernel_size, cuda, gpu)
